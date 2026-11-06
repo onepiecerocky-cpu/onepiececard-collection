@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ワンピカード所持管理</title>
+<style>
+:root{
+  --bg:#0b0e16;--panel:#141a26;--panel2:#1c2433;--line:#2a3448;--text:#e8edf6;--sub:#8e9ab0;
+  --accent:#ff5a4e;--accent2:#ffc84a;--ok:#2ee6a8;
+  --c-red:#e8423a;--c-green:#23a35a;--c-blue:#2f7fd8;--c-purple:#8a4fd1;--c-black:#4a4f5a;--c-yellow:#e9c22c;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:14px}
+button,input,select{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:rgba(11,14,22,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 16px 8px}
+.top{display:flex;align-items:center;gap:10px}
+h1{font-size:16px;margin:0;font-weight:800;letter-spacing:.02em;white-space:nowrap}
+h1 span{color:var(--accent2)}
+.stats{margin-left:auto;display:flex;gap:12px;font-size:12px;color:var(--sub);white-space:nowrap}
+.stats b{color:var(--text);font-size:14px}
+.iconbtn{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+.searchrow{display:flex;gap:8px;margin-top:8px}
+.searchrow input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px;outline:none}
+.searchrow input:focus{border-color:var(--accent2)}
+.filters{display:flex;gap:6px;margin-top:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.filters::-webkit-scrollbar{display:none}
+select.f{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 10px;max-width:46vw;flex:none}
+select.f.on{border-color:var(--accent2);color:var(--accent2)}
+.seg{display:flex;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{background:none;border:0;padding:6px 11px;cursor:pointer;color:var(--sub);white-space:nowrap}
+.seg button.on{background:var(--accent2);color:#1a1300;font-weight:700}
+.colors{display:flex;gap:6px;flex:none;align-items:center}
+.cdot{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;opacity:.35;flex:none}
+.cdot.on{opacity:1;border-color:#fff}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer}
+.chip::after{content:" ×";color:var(--sub)}
+.count{font-size:12px;color:var(--sub);padding:8px 16px 0}
+main{padding:8px 16px 80px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+@media (max-width:480px){.grid{grid-template-columns:repeat(3,1fr);gap:8px}main{padding:6px 10px 80px}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.card.owned{border-color:#4a5a3a;box-shadow:0 0 0 1px rgba(46,230,168,.25)}
+.thumb{position:relative;aspect-ratio:600/838;background:#0f131c;cursor:pointer}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.card:not(.owned) .thumb img{filter:saturate(.35) brightness(.7)}
+.badge{position:absolute;top:5px;right:5px;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--ok);color:#002a1c;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.badge.zero{display:none}
+.ptag{position:absolute;top:5px;left:5px;background:linear-gradient(135deg,#ffe48a,#ff9d4a);color:#3a1800;font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px}
+.ptag.rtag{background:#3a4660;color:#dfe6f3}
+.meta{padding:5px 7px 2px;min-height:34px}
+.meta .nm{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta .cd{font-size:10.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrl{display:flex;align-items:stretch;border-top:1px solid var(--line);margin-top:auto}
+.ctrl button{flex:1;border:0;background:var(--panel2);font-size:20px;font-weight:700;padding:6px 0;cursor:pointer;user-select:none;touch-action:manipulation}
+.ctrl button:active{background:#2b364b}
+.ctrl .minus{color:var(--sub)}
+.ctrl .plus{color:var(--ok)}
+.ctrl .n{flex:0 0 34px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.more{display:block;margin:20px auto;padding:10px 24px}
+.empty{text-align:center;color:var(--sub);padding:40px 0}
+/* modal */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;padding:16px}
+.modal.open{display:flex}
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:760px;width:100%;max-height:92vh;overflow:auto;display:flex;gap:16px;padding:16px;position:relative}
+.sheet .big{flex:0 0 46%}
+.sheet .big img{width:100%;border-radius:10px;display:block}
+.sheet .info{flex:1;min-width:0}
+.sheet h2{margin:0 0 4px;font-size:18px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13px;margin:10px 0}
+.kv dt{color:var(--sub)}.kv dd{margin:0}
+.txt{white-space:pre-wrap;font-size:13px;line-height:1.6;background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--line)}
+.bigctrl{display:flex;align-items:center;gap:10px;margin:14px 0}
+.bigctrl button{width:56px;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);font-size:26px;font-weight:800;cursor:pointer}
+.bigctrl .plus{color:var(--ok)}
+.bigctrl .n{font-size:28px;font-weight:800;min-width:48px;text-align:center}
+.variants{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.variants button{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;cursor:pointer;width:58px;position:relative}
+.variants button.cur{border-color:var(--accent2)}
+.variants img{width:100%;display:block;border-radius:5px}
+.variants span{position:absolute;bottom:2px;right:2px;background:var(--ok);color:#002a1c;font-size:10px;font-weight:800;border-radius:6px;padding:0 4px}
+.close{position:absolute;top:8px;right:8px;background:var(--panel2);border:1px solid var(--line);border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:16px;z-index:2}
+.link{color:var(--accent2);cursor:pointer;text-decoration:underline}
+@media (max-width:600px){.sheet{flex-direction:column;padding:14px}.sheet .big{flex:none;width:72%;margin:0 auto}}
+.menu .sheet{flex-direction:column;max-width:440px;gap:10px}
+.menu h3{margin:4px 0}
+.menu button.w{width:100%;padding:11px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;text-align:left}
+.menu textarea{width:100%;height:120px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11px}
+.note{font-size:12px;color:var(--sub);line-height:1.5}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222c3f;border:1px solid var(--line);padding:9px 16px;border-radius:999px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.loading{text-align:center;padding:60px;color:var(--sub)}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>ONE PIECE <span>COLLECTION</span></h1>
+    <div class="stats"><div>種類 <b id="stKinds">0</b></div><div>枚数 <b id="stTotal">0</b></div></div>
+    <button class="iconbtn" id="menuBtn" aria-label="メニュー">☰</button>
+  </div>
+  <div class="searchrow">
+    <input id="q" type="search" placeholder="名前・カード番号・特徴で検索" autocomplete="off">
+  </div>
+  <div class="filters">
+    <select class="f" id="fSet"><option value="">収録弾：すべて</option></select>
+    <div class="colors" id="fColor"></div>
+    <div class="seg" id="fArt">
+      <button data-v="" class="on">全イラスト</button><button data-v="n">ノーマル</button><button data-v="p">パラレル</button>
+    </div>
+    <div class="seg" id="fOwn">
+      <button data-v="" class="on">すべて</button><button data-v="own">所持</button><button data-v="none">未所持</button>
+    </div>
+    <select class="f" id="fType">
+      <option value="">種類：すべて</option><option>LEADER</option><option>CHARACTER</option><option>EVENT</option><option>STAGE</option>
+    </select>
+    <select class="f" id="fRarity"><option value="">レア：すべて</option></select>
+    <select class="f" id="fFeature"><option value="">特徴：すべて</option></select>
+    <select class="f" id="fSort">
+      <option value="set">並び：収録順</option><option value="code">並び：カード番号</option><option value="cost">並び：コスト</option><option value="owned">並び：所持枚数</option>
+    </select>
+  </div>
+  <div class="chips" id="chips"></div>
+</header>
+<div class="count" id="count"></div>
+<main>
+  <div class="loading" id="loading">カードデータを読み込み中…</div>
+  <div class="grid" id="grid"></div>
+  <button class="iconbtn more" id="more" hidden>さらに表示</button>
+  <div class="empty" id="empty" hidden>該当するカードがありません</div>
+</main>
+
+<div class="modal" id="detail"><div class="sheet" id="detailSheet"></div></div>
+<div class="modal menu" id="menu"><div class="sheet">
+  <button class="close" data-close>✕</button>
+  <h3>データ管理</h3>
+  <p class="note">所持データはこの端末のブラウザに自動保存されます。機種変更や別端末へ移すときはバックアップを使ってください。</p>
+  <button class="w" id="bkCopy">📋 バックアップをコピー</button>
+  <button class="w" id="bkFile">💾 バックアップをファイルに保存</button>
+  <textarea id="bkText" placeholder="ここにバックアップを貼り付けて「読み込み」"></textarea>
+  <button class="w" id="bkLoad">📥 貼り付けたバックアップを読み込み（上書き）</button>
+  <button class="w" id="csv">📄 所持リストをCSVで保存</button>
+  <p class="note" id="dataInfo"></p>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script src="cards.js"></script>
+<script>
+const IMG_BASE = "img/";
+const KEY = "optcg_collection_v1";
+const COLORS = [["赤","--c-red"],["緑","--c-green"],["青","--c-blue"],["紫","--c-purple"],["黒","--c-black"],["黄","--c-yellow"]];
+const PAGE = 120;
+
+let DATA = null, CARDS = [], SETS = {}, byId = {}, variantsOf = {};
+let owned = load();
+const st = {q:"", set:"", colors:new Set(), art:"", own:"", type:"", rarity:"", feature:"", sort:"set"};
+let list = [], shown = 0;
+const $ = s => document.querySelector(s);
+
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {}; }catch(e){ return {}; } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(owned)); }catch(e){} updateStats(); }
+const img = c => IMG_BASE + c.id + ".jpg";
+const norm = s => (s||"").normalize("NFKC").toLowerCase().replace(/[・\s.]/g,"");
+
+function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove("show"),1600); }
+
+async function init(){
+  DATA = window.CARD_DATA || await (await fetch("cards.json")).json();
+  DATA.sets.forEach((s,i)=>{ SETS[s.id] = {...s, order:i}; });
+  CARDS = DATA.cards.map((c,i)=>{
+    c._i = i;
+    c._search = norm(c.name + " " + c.code + " " + c.feature);
+    c._colors = c.color.split("/");
+    c._feats = c.feature.split("/").filter(Boolean);
+    byId[c.id] = c;
+    (variantsOf[c.code] ||= []).push(c);
+    return c;
+  });
+  // selects
+  const fs = $("#fSet");
+  DATA.sets.forEach(s=>fs.add(new Option(s.short + "　" + s.name.replace(/【.*?】/,"").trim(), s.id)));
+  const rar = [...new Set(CARDS.map(c=>c.rarity))];
+  const rOrder = ["L","C","UC","R","SR","SEC","P","SPカード","TR"];
+  rar.sort((a,b)=>(rOrder.indexOf(a)+99*(rOrder.indexOf(a)<0))-(rOrder.indexOf(b)+99*(rOrder.indexOf(b)<0)));
+  rar.forEach(r=>$("#fRarity").add(new Option(r,r)));
+  const fc = {}; CARDS.forEach(c=>c._feats.forEach(f=>fc[f]=(fc[f]||0)+1));
+  Object.keys(fc).sort((a,b)=>fc[b]-fc[a]).forEach(f=>$("#fFeature").add(new Option(`${f}（${fc[f]}）`, f)));
+  // colors
+  const fcol = $("#fColor");
+  COLORS.forEach(([n,v])=>{ const b=document.createElement("button"); b.className="cdot"; b.title=n; b.style.background=`var(${v})`; b.dataset.v=n;
+    b.onclick=()=>{ st.colors.has(n)?st.colors.delete(n):st.colors.add(n); b.classList.toggle("on"); apply(); }; fcol.appendChild(b); });
+  $("#dataInfo").textContent = `カードデータ: ${CARDS.length}枚（うちパラレル${CARDS.filter(c=>c.parallel).length}枚）／更新日 ${DATA.updated}`;
+  $("#loading").remove();
+  updateStats(); apply();
+}
+
+function filtered(){
+  const q = norm(st.q);
+  const qs = q ? q.split(/\s+/).filter(Boolean) : [];
+  return CARDS.filter(c=>{
+    if(st.set && c.set!==st.set) return false;
+    if(st.colors.size && !c._colors.some(x=>st.colors.has(x))) return false;
+    if(st.art==="n" && c.parallel) return false;
+    if(st.art==="p" && !c.parallel) return false;
+    const n = owned[c.id]||0;
+    if(st.own==="own" && !n) return false;
+    if(st.own==="none" && n) return false;
+    if(st.type && c.type!==st.type) return false;
+    if(st.rarity && c.rarity!==st.rarity) return false;
+    if(st.feature && !c._feats.includes(st.feature)) return false;
+    if(q && !c._search.includes(q)) return false;
+    return true;
+  });
+}
+function sortList(a){
+  const cost = c => c.cost===""||c.cost==="-" ? -1 : +c.cost;
+  if(st.sort==="code") a.sort((x,y)=>x.code.localeCompare(y.code)||x.parallel-y.parallel);
+  else if(st.sort==="cost") a.sort((x,y)=>cost(x)-cost(y)||x._i-y._i);
+  else if(st.sort==="owned") a.sort((x,y)=>(owned[y.id]||0)-(owned[x.id]||0)||x._i-y._i);
+  return a;
+}
+function apply(){
+  list = sortList(filtered());
+  shown = 0; $("#grid").innerHTML = "";
+  renderMore();
+  $("#count").textContent = `${list.length.toLocaleString()} 件`;
+  $("#empty").hidden = list.length>0;
+  renderChips();
+  document.querySelectorAll("select.f").forEach(s=>s.classList.toggle("on", !!s.value && s.id!=="fSort"));
+}
+function cardHTML(c){
+  const n = owned[c.id]||0;
+  return `<div class="card${n?" owned":""}" data-id="${c.id}">
+    <div class="thumb" data-act="open"><img loading="lazy" src="${img(c)}" alt="" onerror="this.style.visibility='hidden'">
+      ${c.parallel?`<div class="ptag">パラレル${c.parallel>1?c.parallel:""}</div>`:c.id.includes("_r")?`<div class="ptag rtag">再録</div>`:""}
+      <div class="badge${n?"":" zero"}">${n}</div></div>
+    <div class="meta"><div class="nm">${c.name}</div><div class="cd">${c.code}・${c.rarity}・${c.color}</div></div>
+    <div class="ctrl"><button class="minus" data-act="-">−</button><div class="n">${n}</div><button class="plus" data-act="+">＋</button></div>
+  </div>`;
+}
+function renderMore(){
+  const next = list.slice(shown, shown+PAGE);
+  $("#grid").insertAdjacentHTML("beforeend", next.map(cardHTML).join(""));
+  shown += next.length;
+  $("#more").hidden = shown >= list.length;
+}
+function renderChips(){
+  const ch = [];
+  if(st.q) ch.push(["q",`検索: ${st.q}`]);
+  if(st.set) ch.push(["set",SETS[st.set].short]);
+  st.colors.forEach(c=>ch.push(["color:"+c,c]));
+  if(st.art) ch.push(["art",st.art==="p"?"パラレル":"ノーマル"]);
+  if(st.own) ch.push(["own",st.own==="own"?"所持":"未所持"]);
+  if(st.type) ch.push(["type",st.type]);
+  if(st.rarity) ch.push(["rarity",st.rarity]);
+  if(st.feature) ch.push(["feature","特徴: "+st.feature]);
+  $("#chips").innerHTML = ch.map(([k,l])=>`<span class="chip" data-k="${k}">${l}</span>`).join("") +
+    (ch.length>1?`<span class="chip" data-k="all" style="color:var(--accent)">すべて解除</span>`:"");
+}
+function clearFilter(k){
+  if(k==="all"){ Object.assign(st,{q:"",set:"",art:"",own:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
+  else if(k.startsWith("color:")) st.colors.delete(k.slice(6));
+  else st[k]="";
+  syncUI(); apply();
+}
+function syncUI(){
+  $("#q").value=st.q; $("#fSet").value=st.set; $("#fType").value=st.type; $("#fRarity").value=st.rarity; $("#fFeature").value=st.feature;
+  document.querySelectorAll("#fColor .cdot").forEach(b=>b.classList.toggle("on",st.colors.has(b.dataset.v)));
+  document.querySelectorAll("#fArt button").forEach(b=>b.classList.toggle("on",b.dataset.v===st.art));
+  document.querySelectorAll("#fOwn button").forEach(b=>b.classList.toggle("on",b.dataset.v===st.own));
+}
+function setCount(id, n){
+  n = Math.max(0, Math.min(99, n));
+  if(n) owned[id]=n; else delete owned[id];
+  save();
+  document.querySelectorAll(`.card[data-id="${CSS.escape(id)}"]`).forEach(el=>{
+    el.classList.toggle("owned", !!n);
+    el.querySelector(".n").textContent = n;
+    const b = el.querySelector(".badge"); b.textContent=n; b.classList.toggle("zero", !n);
+  });
+  if($("#detail").classList.contains("open") && $("#detail").dataset.id===id) openDetail(id);
+}
+function updateStats(){
+  const v = Object.values(owned);
+  $("#stKinds").textContent = v.length.toLocaleString();
+  $("#stTotal").textContent = v.reduce((a,b)=>a+b,0).toLocaleString();
+}
+function openDetail(id){
+  const c = byId[id], n = owned[id]||0, s = SETS[c.set];
+  const vars = variantsOf[c.code] || [c];
+  const codeTotal = vars.reduce((a,v)=>a+(owned[v.id]||0),0);
+  $("#detail").dataset.id = id;
+  $("#detailSheet").innerHTML = `<button class="close" data-close>✕</button>
+    <div class="big"><img src="${img(c)}" alt="${c.name}"></div>
+    <div class="info">
+      <h2>${c.name}</h2>
+      <div style="color:var(--sub);font-size:12px">${c.code}${c.parallel?`（パラレル${c.parallel>1?c.parallel:""}）`:c.id.includes("_r")?"（再録）":""}・${c.rarity}・${c.type}</div>
+      <div class="bigctrl"><button data-d="-1">−</button><div class="n">${n}</div><button class="plus" data-d="1">＋</button>
+        <span style="color:var(--sub);font-size:12px">同番号合計 ${codeTotal}枚</span></div>
+      ${vars.length>1?`<div style="font-size:12px;color:var(--sub)">イラスト違い</div><div class="variants">${vars.map(v=>`<button data-v="${v.id}" class="${v.id===id?"cur":""}"><img src="${img(v)}" loading="lazy">${owned[v.id]?`<span>${owned[v.id]}</span>`:""}</button>`).join("")}</div>`:""}
+      <dl class="kv">
+        <dt>色</dt><dd>${c.color}</dd>
+        ${c.cost && c.cost!=="-"?`<dt>${c.type==="LEADER"?"ライフ":"コスト"}</dt><dd>${c.cost}</dd>`:""}
+        ${c.power && c.power!=="-"?`<dt>パワー</dt><dd>${c.power}</dd>`:""}
+        ${c.counter && c.counter!=="-"?`<dt>カウンター</dt><dd>${c.counter}</dd>`:""}
+        ${c.attr?`<dt>属性</dt><dd>${c.attr}</dd>`:""}
+        <dt>特徴</dt><dd>${c._feats.map(f=>`<span class="link" data-feat="${f}">${f}</span>`).join(" / ")}</dd>
+        <dt>収録</dt><dd><span class="link" data-set="${c.set}">${s.name}</span></dd>
+      </dl>
+      ${c.text && c.text!=="-"?`<div class="txt">${c.text}</div>`:""}
+      ${c.trigger?`<div class="txt" style="margin-top:6px">【トリガー】${c.trigger}</div>`:""}
+    </div>`;
+  $("#detail").classList.add("open");
+}
+
+// events
+$("#grid").addEventListener("click", e=>{
+  const t = e.target.closest("[data-act]"); if(!t) return;
+  const id = t.closest(".card").dataset.id, act = t.dataset.act;
+  if(act==="open") openDetail(id);
+  else setCount(id, (owned[id]||0) + (act==="+"?1:-1));
+});
+$("#more").onclick = renderMore;
+new IntersectionObserver(es=>{ if(es[0].isIntersecting && shown<list.length) renderMore(); },{rootMargin:"800px"}).observe($("#more"));
+let qt; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ st.q=e.target.value.trim(); apply(); },200); });
+[["#fSet","set"],["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]].forEach(([s,k])=>$(s).addEventListener("change",e=>{ st[k]=e.target.value; apply(); }));
+[["#fArt","art"],["#fOwn","own"]].forEach(([s,k])=>$(s).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; st[k]=b.dataset.v; syncUI(); apply(); }));
+$("#chips").addEventListener("click", e=>{ const c=e.target.closest(".chip"); if(c) clearFilter(c.dataset.k); });
+$("#detail").addEventListener("click", e=>{
+  const id = $("#detail").dataset.id;
+  if(e.target===e.currentTarget || e.target.closest("[data-close]")) return $("#detail").classList.remove("open");
+  const d = e.target.closest("[data-d]"); if(d) return setCount(id,(owned[id]||0)+ +d.dataset.d);
+  const v = e.target.closest("[data-v]"); if(v) return openDetail(v.dataset.v);
+  const f = e.target.closest("[data-feat]"); if(f){ $("#detail").classList.remove("open"); st.feature=f.dataset.feat; syncUI(); apply(); window.scrollTo(0,0); return; }
+  const s = e.target.closest("[data-set]"); if(s){ $("#detail").classList.remove("open"); st.set=s.dataset.set; syncUI(); apply(); window.scrollTo(0,0); }
+});
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open")); });
+$("#menuBtn").onclick = ()=>$("#menu").classList.add("open");
+$("#menu").addEventListener("click", e=>{ if(e.target===e.currentTarget || e.target.closest("[data-close]")) $("#menu").classList.remove("open"); });
+const backup = ()=>JSON.stringify({app:"optcg-collection",v:1,at:new Date().toISOString(),owned});
+$("#bkCopy").onclick = async ()=>{ try{ await navigator.clipboard.writeText(backup()); toast("コピーしました"); }catch(e){ $("#bkText").value=backup(); $("#bkText").select(); toast("下の欄からコピーしてください"); } };
+function download(name, text, type){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+$("#bkFile").onclick = ()=>download(`optcg-collection-${new Date().toISOString().slice(0,10)}.json`, backup(), "application/json");
+$("#bkLoad").onclick = ()=>{
+  try{ const d=JSON.parse($("#bkText").value.trim()); const o=d.owned||d; if(typeof o!=="object") throw 0;
+    if(!confirm(`${Object.keys(o).length}種類のデータで上書きします。よろしいですか？`)) return;
+    owned={}; for(const [k,v] of Object.entries(o)) if(+v>0) owned[k]=Math.min(99,+v|0);
+    save(); apply(); $("#bkText").value=""; toast("読み込みました"); $("#menu").classList.remove("open");
+  }catch(e){ toast("バックアップの形式が正しくありません"); }
+};
+$("#csv").onclick = ()=>{
+  const rows=[["カード番号","ID","名前","パラレル","レアリティ","色","種類","収録","枚数"]];
+  CARDS.filter(c=>owned[c.id]).forEach(c=>rows.push([c.code,c.id,c.name,c.parallel?"○":"",c.rarity,c.color,c.type,SETS[c.set].short,owned[c.id]]));
+  download("optcg-collection.csv", "﻿"+rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(",")).join("\n"), "text/csv");
+};
+init().catch(e=>{ $("#loading").textContent="カードデータの読み込みに失敗しました: "+e.message; });
+</script>
+</body>
+</html>
