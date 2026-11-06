@@ -17,6 +17,10 @@ header{position:sticky;top:0;z-index:20;background:rgba(11,14,22,.96);backdrop-f
 .top{display:flex;align-items:center;gap:10px}
 h1{font-size:16px;margin:0;font-weight:800;letter-spacing:.02em;white-space:nowrap}
 h1 span{color:var(--accent2)}
+h1{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#menuBtn{flex:none}
+h1 i{font-style:normal}
+@media (max-width:420px){h1 .long{display:none}h1{font-size:15px}.stats{gap:8px}.top{gap:8px}}
 .stats{margin-left:auto;display:flex;gap:12px;font-size:12px;color:var(--sub);white-space:nowrap}
 .stats b{color:var(--text);font-size:14px}
 .iconbtn{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
@@ -26,6 +30,16 @@ h1 span{color:var(--accent2)}
 .filters{display:flex;gap:6px;margin-top:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .filters::-webkit-scrollbar{display:none}
 select.f{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 10px;max-width:46vw;flex:none}
+button.f.dd{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 12px;flex:none;cursor:pointer;white-space:nowrap}
+button.f.dd.on{border-color:var(--accent2);color:var(--accent2)}
+.ddpanel{position:fixed;z-index:40;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.ddpanel label{display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:8px;cursor:pointer}
+.ddpanel label:hover{background:var(--panel2)}
+.ddpanel input{width:18px;height:18px;accent-color:var(--accent2)}
+.ddpanel .indent{padding-left:22px}
+.ddsub{font-size:11px;color:var(--sub);padding:6px 6px 0}
+.ddfoot{display:flex;gap:6px;margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
+.ddfoot button{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px;cursor:pointer}
 select.f.on{border-color:var(--accent2);color:var(--accent2)}
 .seg{display:flex;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .seg button{background:none;border:0;padding:6px 11px;cursor:pointer;color:var(--sub);white-space:nowrap}
@@ -101,7 +115,7 @@ input.sync:focus{border-color:var(--accent2)}
 <body>
 <header>
   <div class="top">
-    <h1>ONE PIECE <span>COLLECTION</span></h1>
+    <h1><i class="long">ONE PIECE </i><span>COLLECTION</span></h1>
     <div class="stats"><div>種類 <b id="stKinds">0</b></div><div>枚数 <b id="stTotal">0</b></div></div>
     <button class="iconbtn" id="menuBtn" aria-label="メニュー">☰<span class="sdot" id="syncDot" hidden></span></button>
   </div>
@@ -111,9 +125,7 @@ input.sync:focus{border-color:var(--accent2)}
   <div class="filters">
     <select class="f" id="fSet"><option value="">収録弾：すべて</option></select>
     <div class="colors" id="fColor"></div>
-    <div class="seg" id="fArt">
-      <button data-v="" class="on">全イラスト</button><button data-v="n">ノーマル</button><button data-v="p">パラレル全部</button><button data-v="pp">パックのパラレル</button><button data-v="po">その他のパラレル</button>
-    </div>
+    <button class="f dd" id="fArtBtn" type="button">イラスト：すべて ▾</button>
     <div class="seg" id="fOwn">
       <button data-v="" class="on">すべて</button><button data-v="own">所持</button><button data-v="none">未所持</button>
     </div>
@@ -136,6 +148,16 @@ input.sync:focus{border-color:var(--accent2)}
   <div class="empty" id="empty" hidden>該当するカードがありません</div>
 </main>
 
+<div class="ddpanel" id="fArtPanel" hidden>
+  <label><input type="checkbox" value="n"> ノーマル</label>
+  <label><input type="checkbox" value="pp"> パックのパラレル</label>
+  <div class="ddsub">その他のパラレル</div>
+  <label class="indent"><input type="checkbox" value="po:デッキ"> スタートデッキ</label>
+  <label class="indent"><input type="checkbox" value="po:プロモ"> プロモ</label>
+  <label class="indent"><input type="checkbox" value="po:限定"> 限定商品</label>
+  <label class="indent"><input type="checkbox" value="po:ファミリー"> ファミリーデッキ</label>
+  <div class="ddfoot"><button type="button" id="fArtClear">クリア</button><button type="button" id="fArtDone">閉じる</button></div>
+</div>
 <div class="modal" id="detail"><div class="sheet" id="detailSheet"></div></div>
 <div class="modal menu" id="menu"><div class="sheet">
   <button class="close" data-close>✕</button>
@@ -165,7 +187,7 @@ const PAGE = 120;
 
 let DATA = null, CARDS = [], SETS = {}, byId = {}, variantsOf = {};
 let owned = load();
-const st = {q:"", set:"", colors:new Set(), art:"", own:"", type:"", rarity:"", feature:"", sort:"set"};
+const st = {q:"", set:"", colors:new Set(), arts:new Set(), own:"", type:"", rarity:"", feature:"", sort:"set"};
 let list = [], shown = 0;
 const $ = s => document.querySelector(s);
 
@@ -187,6 +209,7 @@ async function init(){
     // パック収録 = ブースター(OP)・エクストラ(EB)・プレミアム(PRB)。それ以外はデッキ/プロモ/限定商品など
     c._pack = /^550[123]/.test(c.set);
     c._src = c._pack ? "" : c.set.startsWith("5500") ? "デッキ" : c.set==="550901" ? "プロモ" : c.set==="550801" ? "限定" : c.set==="550701" ? "ファミリー" : "その他";
+    c._art = !c.parallel ? "n" : c._pack ? "pp" : "po:" + c._src;
     byId[c.id] = c;
     (variantsOf[c.code] ||= []).push(c);
     return c;
@@ -217,10 +240,7 @@ function filtered(){
   return CARDS.filter(c=>{
     if(st.set && c.set!==st.set) return false;
     if(st.colors.size && !c._colors.some(x=>st.colors.has(x))) return false;
-    if(st.art==="n" && c.parallel) return false;
-    if(st.art==="p" && !c.parallel) return false;
-    if(st.art==="pp" && !(c.parallel && c._pack)) return false;
-    if(st.art==="po" && !(c.parallel && !c._pack)) return false;
+    if(st.arts.size && !st.arts.has(c._art)) return false;
     const n = owned[c.id]||0;
     if(st.own==="own" && !n) return false;
     if(st.own==="none" && n) return false;
@@ -271,7 +291,7 @@ function renderChips(){
   if(st.q) ch.push(["q",`検索: ${st.q}`]);
   if(st.set) ch.push(["set",SETS[st.set].short]);
   st.colors.forEach(c=>ch.push(["color:"+c,c]));
-  if(st.art) ch.push(["art",{n:"ノーマル",p:"パラレル全部",pp:"パックのパラレル",po:"その他のパラレル"}[st.art]]);
+  st.arts.forEach(a=>ch.push(["art:"+a, ART_LABEL[a]]));
   if(st.own) ch.push(["own",st.own==="own"?"所持":"未所持"]);
   if(st.type) ch.push(["type",st.type]);
   if(st.rarity) ch.push(["rarity",st.rarity]);
@@ -280,15 +300,18 @@ function renderChips(){
     (ch.length>1?`<span class="chip" data-k="all" style="color:var(--accent)">すべて解除</span>`:"");
 }
 function clearFilter(k){
-  if(k==="all"){ Object.assign(st,{q:"",set:"",art:"",own:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
+  if(k==="all"){ st.arts.clear(); Object.assign(st,{q:"",set:"",own:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
   else if(k.startsWith("color:")) st.colors.delete(k.slice(6));
+  else if(k.startsWith("art:")) st.arts.delete(k.slice(4));
   else st[k]="";
   syncUI(); apply();
 }
 function syncUI(){
   $("#q").value=st.q; $("#fSet").value=st.set; $("#fType").value=st.type; $("#fRarity").value=st.rarity; $("#fFeature").value=st.feature;
   document.querySelectorAll("#fColor .cdot").forEach(b=>b.classList.toggle("on",st.colors.has(b.dataset.v)));
-  document.querySelectorAll("#fArt button").forEach(b=>b.classList.toggle("on",b.dataset.v===st.art));
+  document.querySelectorAll("#fArtPanel input").forEach(b=>b.checked=st.arts.has(b.value));
+  const ab=$("#fArtBtn"); ab.classList.toggle("on", st.arts.size>0);
+  ab.textContent = "イラスト：" + (!st.arts.size ? "すべて" : st.arts.size===1 ? ART_LABEL[[...st.arts][0]] : st.arts.size+"種類") + " ▾";
   document.querySelectorAll("#fOwn button").forEach(b=>b.classList.toggle("on",b.dataset.v===st.own));
 }
 function setCount(id, n){
@@ -351,7 +374,20 @@ $("#more").onclick = renderMore;
 new IntersectionObserver(es=>{ if(es[0].isIntersecting && shown<list.length) renderMore(); },{rootMargin:"800px"}).observe($("#more"));
 let qt; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ st.q=e.target.value.trim(); apply(); },200); });
 [["#fSet","set"],["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]].forEach(([s,k])=>$(s).addEventListener("change",e=>{ st[k]=e.target.value; apply(); }));
-[["#fArt","art"],["#fOwn","own"]].forEach(([s,k])=>$(s).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; st[k]=b.dataset.v; syncUI(); apply(); }));
+[["#fOwn","own"]].forEach(([s,k])=>$(s).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; st[k]=b.dataset.v; syncUI(); apply(); }));
+const ART_LABEL = {"n":"ノーマル","pp":"パックのパラレル","po:デッキ":"デッキのパラレル","po:プロモ":"プロモのパラレル","po:限定":"限定商品のパラレル","po:ファミリー":"ファミリーのパラレル"};
+function openArt(){
+  const p=$("#fArtPanel"), r=$("#fArtBtn").getBoundingClientRect();
+  p.hidden=false;
+  p.style.top=(r.bottom+6)+"px";
+  p.style.left=Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8))+"px";
+}
+$("#fArtBtn").addEventListener("click", e=>{ e.stopPropagation(); $("#fArtPanel").hidden ? openArt() : ($("#fArtPanel").hidden=true); });
+$("#fArtPanel").addEventListener("change", e=>{ const v=e.target.value; e.target.checked?st.arts.add(v):st.arts.delete(v); syncUI(); apply(); });
+$("#fArtClear").onclick = ()=>{ st.arts.clear(); syncUI(); apply(); };
+$("#fArtDone").onclick = ()=>{ $("#fArtPanel").hidden=true; };
+document.addEventListener("click", e=>{ if(!$("#fArtPanel").hidden && !e.target.closest("#fArtPanel,#fArtBtn")) $("#fArtPanel").hidden=true; });
+document.querySelector(".filters").addEventListener("scroll", ()=>{ $("#fArtPanel").hidden=true; });
 $("#chips").addEventListener("click", e=>{ const c=e.target.closest(".chip"); if(c) clearFilter(c.dataset.k); });
 $("#detail").addEventListener("click", e=>{
   const id = $("#detail").dataset.id;
