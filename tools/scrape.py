@@ -48,6 +48,8 @@ for v, label in series:
             "text": field(body, "text"), "trigger": field(body, "trigger"),
             "img": img, "set": v, "parallel": int(pm.group(1)) if pm else 0,
         })
+        if cards[-1]["type"] != "LEADER" and cards[-1]["cost"] in ("-", ""):
+            cards[-1]["cost"] = "0"  # 公式サイトはコスト0を「-」と表記する
         n += 1
     print(v, short, n, file=sys.stderr)
     time.sleep(1)

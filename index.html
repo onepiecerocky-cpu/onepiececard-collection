@@ -187,6 +187,8 @@ async function init(){
     (variantsOf[c.code] ||= []).push(c);
     return c;
   });
+  // 公式サイトはコスト0のカードを「-」と表記するので、リーダー以外は0として扱う
+  CARDS.forEach(c=>{ if(c.type!=="LEADER" && (c.cost==="-"||c.cost==="")) c.cost="0"; });
   // selects
   const fs = $("#fSet");
   DATA.sets.forEach(s=>fs.add(new Option(s.short + "　" + s.name.replace(/【.*?】/,"").trim(), s.id)));
@@ -225,8 +227,11 @@ function filtered(){
 }
 function sortList(a){
   const cost = c => c.cost===""||c.cost==="-" ? -1 : +c.cost;
+  // コスト順は 種類(キャラ→イベント→ステージ→リーダー) → コスト の順に並べる
+  const TYPE_ORDER = {CHARACTER:0, EVENT:1, STAGE:2, LEADER:3};
+  const tord = c => TYPE_ORDER[c.type] ?? 9;
   if(st.sort==="code") a.sort((x,y)=>x.code.localeCompare(y.code)||x.parallel-y.parallel);
-  else if(st.sort==="cost") a.sort((x,y)=>cost(x)-cost(y)||x._i-y._i);
+  else if(st.sort==="cost") a.sort((x,y)=>tord(x)-tord(y)||cost(x)-cost(y)||x._i-y._i);
   else if(st.sort==="owned") a.sort((x,y)=>(owned[y.id]||0)-(owned[x.id]||0)||x._i-y._i);
   return a;
 }
