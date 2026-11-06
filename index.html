@@ -87,6 +87,10 @@ main{padding:8px 16px 80px}
 .menu h3{margin:4px 0}
 .menu button.w{width:100%;padding:11px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;text-align:left}
 .menu textarea{width:100%;height:120px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11px}
+input.sync{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;outline:none}
+input.sync:focus{border-color:var(--accent2)}
+.sdot{width:8px;height:8px;border-radius:50%;background:#555;display:inline-block;margin-left:4px;vertical-align:middle}
+.sdot.on{background:var(--ok)}.sdot.busy{background:var(--accent2)}.sdot.err{background:var(--accent)}
 .note{font-size:12px;color:var(--sub);line-height:1.5}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222c3f;border:1px solid var(--line);padding:9px 16px;border-radius:999px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
@@ -98,7 +102,7 @@ main{padding:8px 16px 80px}
   <div class="top">
     <h1>ONE PIECE <span>COLLECTION</span></h1>
     <div class="stats"><div>種類 <b id="stKinds">0</b></div><div>枚数 <b id="stTotal">0</b></div></div>
-    <button class="iconbtn" id="menuBtn" aria-label="メニュー">☰</button>
+    <button class="iconbtn" id="menuBtn" aria-label="メニュー">☰<span class="sdot" id="syncDot" hidden></span></button>
   </div>
   <div class="searchrow">
     <input id="q" type="search" placeholder="名前・カード番号・特徴で検索" autocomplete="off">
@@ -134,6 +138,12 @@ main{padding:8px 16px 80px}
 <div class="modal" id="detail"><div class="sheet" id="detailSheet"></div></div>
 <div class="modal menu" id="menu"><div class="sheet">
   <button class="close" data-close>✕</button>
+  <h3>クラウド同期 <span class="note" id="syncStatus">オフ</span></h3>
+  <p class="note">PC・スマホなど全端末で<b>同じURLと同期コード</b>を入れてオンにすると、所持枚数が自動で同期されます。URLはBATTLOGと同じFirebaseのURLでOK。同期コードはBATTLOGとは<b>別のもの</b>にしてください。</p>
+  <input class="sync" id="syncUrl" placeholder="https://xxxx-default-rtdb.firebaseio.com" autocomplete="off" autocapitalize="off">
+  <input class="sync" id="syncCode" placeholder="同期コード（例: rocky-collection-7k2）" autocomplete="off" autocapitalize="off">
+  <button class="w" id="syncToggle">☁️ 同期をオンにする</button>
+  <button class="w" id="syncNow" hidden>🔄 今すぐ同期</button>
   <h3>データ管理</h3>
   <p class="note">所持データはこの端末のブラウザに自動保存されます。機種変更や別端末へ移すときはバックアップを使ってください。</p>
   <button class="w" id="bkCopy">📋 バックアップをコピー</button>
@@ -274,6 +284,11 @@ function setCount(id, n){
   n = Math.max(0, Math.min(99, n));
   if(n) owned[id]=n; else delete owned[id];
   save();
+  Sync.queue(id, n);
+  refreshCard(id);
+}
+function refreshCard(id){
+  const n = owned[id]||0;
   document.querySelectorAll(`.card[data-id="${CSS.escape(id)}"]`).forEach(el=>{
     el.classList.toggle("owned", !!n);
     el.querySelector(".n").textContent = n;
@@ -346,7 +361,7 @@ $("#bkLoad").onclick = ()=>{
   try{ const d=JSON.parse($("#bkText").value.trim()); const o=d.owned||d; if(typeof o!=="object") throw 0;
     if(!confirm(`${Object.keys(o).length}種類のデータで上書きします。よろしいですか？`)) return;
     owned={}; for(const [k,v] of Object.entries(o)) if(+v>0) owned[k]=Math.min(99,+v|0);
-    save(); apply(); $("#bkText").value=""; toast("読み込みました"); $("#menu").classList.remove("open");
+    save(); apply(); Sync.pushAll(); $("#bkText").value=""; toast("読み込みました"); $("#menu").classList.remove("open");
   }catch(e){ toast("バックアップの形式が正しくありません"); }
 };
 $("#csv").onclick = ()=>{
@@ -354,7 +369,117 @@ $("#csv").onclick = ()=>{
   CARDS.filter(c=>owned[c.id]).forEach(c=>rows.push([c.code,c.id,c.name,c.parallel?"○":"",c.rarity,c.color,c.type,SETS[c.set].short,owned[c.id]]));
   download("optcg-collection.csv", "﻿"+rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(",")).join("\n"), "text/csv");
 };
-init().catch(e=>{ $("#loading").textContent="カードデータの読み込みに失敗しました: "+e.message; });
+/* ---------- クラウド同期（Firebase Realtime Database REST）----------
+   /spaces/<同期コード>/owned/<カードID> = 枚数 をカード単位でPATCHするので、
+   別端末で別のカードを同時に触っても上書きし合わない。未送信分は pending に保存し、オフライン後も再送する。 */
+const Sync = (()=>{
+  const CFG = "optcg_collection_sync_v1", PEND = "optcg_collection_pending_v1";
+  const ls = (k,d)=>{ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } };
+  const ss = (k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+  let cfg = ls(CFG, {}), pending = ls(PEND, {}), timer = null, poll = null, busy = false;
+  const on = ()=>!!(cfg.enabled && cfg.url && cfg.code);
+  const base = ()=>cfg.url.trim().replace(/\/+$/,"") + "/spaces/" + encodeURIComponent(cfg.code.trim());
+  const hhmm = ()=>new Date().toTimeString().slice(0,5);
+  function status(t, k){
+    $("#syncStatus").textContent = t;
+    const d = $("#syncDot"); d.hidden = !cfg.enabled; d.className = "sdot " + (k||"");
+  }
+  async function req(path, method, body){
+    const r = await fetch(base() + path + ".json", {method, headers: body?{"Content-Type":"application/json"}:{}, body: body?JSON.stringify(body):undefined});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+  function queue(id, n){
+    if(!cfg.enabled) return;
+    pending[id] = n || null; ss(PEND, pending);
+    clearTimeout(timer); timer = setTimeout(flush, 700);
+  }
+  async function flush(){
+    if(!on() || busy || !Object.keys(pending).length) return;
+    busy = true; status("送信中…","busy");
+    const batch = {...pending};
+    try{
+      await req("/owned", "PATCH", batch);
+      for(const k in batch) if(pending[k]===batch[k]) delete pending[k];
+      ss(PEND, pending);
+      status("同期済み " + hhmm(), "on");
+    }catch(e){ status("同期エラー（自動で再試行します）","err"); }
+    busy = false;
+    if(Object.keys(pending).length) { clearTimeout(timer); timer = setTimeout(flush, 5000); }
+  }
+  async function pull(){
+    if(!on() || busy) return;
+    busy = true;
+    try{
+      const remote = (await req("/owned", "GET")) || {};
+      const next = {};
+      for(const [k,v] of Object.entries(remote)) if(+v>0) next[k] = Math.min(99, +v|0);
+      for(const [k,v] of Object.entries(pending)) { if(v) next[k]=v; else delete next[k]; } // 未送信の自分の変更を優先
+      const changed = new Set([...Object.keys(owned), ...Object.keys(next)].filter(k=>(owned[k]||0)!==(next[k]||0)));
+      owned = next; save();
+      changed.forEach(refreshCard);
+      if(changed.size && $("#detail").classList.contains("open")) openDetail($("#detail").dataset.id);
+      if(changed.size && st.own) apply();
+      status("同期済み " + hhmm(), "on");
+    }catch(e){ status("同期エラー（自動で再試行します）","err"); }
+    busy = false;
+    flush();
+  }
+  async function pushAll(){
+    if(!on()) return;
+    try{ status("送信中…","busy"); await req("/owned","PUT", owned); pending = {}; ss(PEND, pending); status("同期済み " + hhmm(),"on"); }
+    catch(e){ status("同期エラー","err"); }
+  }
+  function startPolling(){
+    clearInterval(poll);
+    if(on()) poll = setInterval(()=>{ if(!document.hidden) pull(); }, 15000);
+  }
+  async function enable(){
+    cfg.url = $("#syncUrl").value.trim(); cfg.code = $("#syncCode").value.trim();
+    if(!/^https?:\/\/.+/.test(cfg.url) || !cfg.code) return toast("URLと同期コードを入力してください");
+    if(/[.#$\[\]\/]/.test(cfg.code)) return toast("同期コードに . # $ [ ] / は使えません");
+    status("接続中…","busy");
+    let remote;
+    try{ remote = (await req("/owned","GET")) || {}; }
+    catch(e){ return status("接続できません。URLを確認してください","err"); }
+    const rn = Object.keys(remote).length, ln = Object.keys(owned).length;
+    cfg.enabled = true; ss(CFG, cfg);
+    if(!rn){ await pushAll(); }
+    else if(!ln){ pending = {}; ss(PEND, pending); busy=false; await pull(); }
+    else {
+      const useCloud = confirm(`クラウドに${rn}種類、この端末に${ln}種類のデータがあります。\n\nOK：クラウドのデータを使う（この端末の分は上書き）\nキャンセル：この端末とクラウドを合算する（多い方の枚数を採用）`);
+      if(useCloud){ pending = {}; ss(PEND, pending); await pull(); }
+      else {
+        const merged = {...owned};
+        for(const [k,v] of Object.entries(remote)) merged[k] = Math.max(merged[k]||0, +v|0);
+        owned = merged; save(); apply(); await pushAll();
+      }
+    }
+    renderUI(); startPolling(); toast("同期をオンにしました");
+  }
+  function disable(){
+    cfg.enabled = false; ss(CFG, cfg); clearInterval(poll);
+    status("オフ"); renderUI(); toast("同期をオフにしました（この端末のデータは残ります）");
+  }
+  function renderUI(){
+    $("#syncUrl").value = cfg.url||""; $("#syncCode").value = cfg.code||"";
+    $("#syncUrl").disabled = $("#syncCode").disabled = !!cfg.enabled;
+    $("#syncToggle").textContent = cfg.enabled ? "⏸ 同期をオフにする" : "☁️ 同期をオンにする";
+    $("#syncNow").hidden = !cfg.enabled;
+    if(!cfg.enabled) status("オフ");
+  }
+  function start(){
+    renderUI();
+    $("#syncToggle").onclick = ()=> cfg.enabled ? disable() : enable();
+    $("#syncNow").onclick = ()=>pull();
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) pull(); else flush(); });
+    window.addEventListener("online", ()=>pull());
+    if(on()){ status("接続中…","busy"); pull(); startPolling(); }
+  }
+  return {queue, pushAll, start, pull};
+})();
+
+init().then(()=>Sync.start()).catch(e=>{ $("#loading").textContent="カードデータの読み込みに失敗しました: "+e.message; });
 </script>
 </body>
 </html>
