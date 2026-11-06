@@ -40,6 +40,8 @@ button.f.dd.on{border-color:var(--accent2);color:var(--accent2)}
 .ddpanel label:hover{background:var(--panel2)}
 .ddpanel input{width:18px;height:18px;accent-color:var(--accent2)}
 .ddpanel .indent{padding-left:22px}
+.ddpanel .ddbody{max-height:min(60vh,460px);overflow:auto;overscroll-behavior:contain}
+.ddpanel label.grp{font-size:12px;color:var(--sub);font-weight:700;margin-top:4px}
 .ddsub{font-size:11px;color:var(--sub);padding:6px 6px 0}
 .ddfoot{display:flex;gap:6px;margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
 .ddfoot button{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px;cursor:pointer}
@@ -133,9 +135,10 @@ input.sync:focus{border-color:var(--accent2)}
     <input id="q" type="search" placeholder="名前・カード番号・特徴で検索" autocomplete="off">
   </div>
   <div class="filters">
-    <select class="f" id="fSet"><option value="">収録弾：すべて</option></select>
+    <button class="f dd" id="fSetsBtn" type="button">収録弾：すべて ▾</button>
     <div class="colors" id="fColor"></div>
-    <button class="f dd" id="fArtBtn" type="button">イラスト：すべて ▾</button>
+    <button class="f dd" id="fArtsBtn" type="button">イラスト：すべて ▾</button>
+    <button class="f dd" id="fBlocksBtn" type="button">ブロック：すべて ▾</button>
     <div class="seg" id="fOwn">
       <button data-v="" class="on">すべて</button><button data-v="own">所持</button><button data-v="none">未所持</button>
     </div>
@@ -162,17 +165,9 @@ input.sync:focus{border-color:var(--accent2)}
   <div class="empty" id="empty" hidden>該当するカードがありません</div>
 </main>
 
-<div class="ddpanel" id="fArtPanel" hidden>
-  <label><input type="checkbox" value="n"> ノーマル</label>
-  <label><input type="checkbox" value="r"> 再録（パラレル以外）</label>
-  <label><input type="checkbox" value="pp"> パックのパラレル</label>
-  <div class="ddsub">その他のパラレル</div>
-  <label class="indent"><input type="checkbox" value="po:デッキ"> スタートデッキ</label>
-  <label class="indent"><input type="checkbox" value="po:プロモ"> プロモ</label>
-  <label class="indent"><input type="checkbox" value="po:限定"> 限定商品</label>
-  <label class="indent"><input type="checkbox" value="po:ファミリー"> ファミリーデッキ</label>
-  <div class="ddfoot"><button type="button" id="fArtClear">クリア</button><button type="button" id="fArtDone">閉じる</button></div>
-</div>
+<div class="ddpanel" id="fArtsPanel" hidden></div>
+<div class="ddpanel" id="fSetsPanel" hidden></div>
+<div class="ddpanel" id="fBlocksPanel" hidden></div>
 <div class="modal" id="detail"><div class="sheet" id="detailSheet"></div></div>
 <div class="modal menu" id="menu"><div class="sheet">
   <button class="close" data-close>✕</button>
@@ -202,7 +197,7 @@ const PAGE = 120;
 
 let DATA = null, CARDS = [], SETS = {}, byId = {}, variantsOf = {};
 let owned = load();
-const st = {q:"", set:"", colors:new Set(), arts:new Set(), own:"", type:"", rarity:"", feature:"", sort:"set"};
+const st = {q:"", sets:new Set(), colors:new Set(), arts:new Set(), blocks:new Set(), own:"", type:"", rarity:"", feature:"", sort:"set"};
 let list = [], shown = 0;
 const $ = s => document.querySelector(s);
 
@@ -232,8 +227,7 @@ async function init(){
   // 公式サイトはコスト0のカードを「-」と表記するので、リーダー以外は0として扱う
   CARDS.forEach(c=>{ if(c.type!=="LEADER" && (c.cost==="-"||c.cost==="")) c.cost="0"; });
   // selects
-  const fs = $("#fSet");
-  DATA.sets.forEach(s=>fs.add(new Option(s.short + "　" + s.name.replace(/【.*?】/,"").trim(), s.id)));
+  buildMultiPanels();
   const rar = [...new Set(CARDS.map(c=>c.rarity))];
   const rOrder = ["L","C","UC","R","SR","SEC","P","SPカード","TR"];
   rar.sort((a,b)=>(rOrder.indexOf(a)+99*(rOrder.indexOf(a)<0))-(rOrder.indexOf(b)+99*(rOrder.indexOf(b)<0)));
@@ -253,23 +247,27 @@ async function init(){
 // 絞り込み条件・並び順をこの端末に保存し、再読み込み後も復元する
 const FKEY = "optcg_collection_filters_v1";
 function saveFilters(){
-  try{ localStorage.setItem(FKEY, JSON.stringify({...st, colors:[...st.colors], arts:[...st.arts]})); }catch(e){}
+  try{ localStorage.setItem(FKEY, JSON.stringify({...st, colors:[...st.colors], arts:[...st.arts], sets:[...st.sets], blocks:[...st.blocks]})); }catch(e){}
 }
 function restoreFilters(){
   let f; try{ f = JSON.parse(localStorage.getItem(FKEY)); }catch(e){}
   if(!f || typeof f!=="object") return;
-  for(const k of ["q","set","own","type","rarity","feature","sort"]) if(typeof f[k]==="string") st[k]=f[k];
+  for(const k of ["q","own","type","rarity","feature","sort"]) if(typeof f[k]==="string") st[k]=f[k];
+  if(typeof f.set==="string" && f.set) f.sets = [f.set];   // 旧形式(単一選択)からの移行
+  if(Array.isArray(f.sets)) st.sets = new Set(f.sets.filter(x=>x in SETS));
+  if(Array.isArray(f.blocks)) st.blocks = new Set(f.blocks.filter(x=>BLOCKS.includes(x)));
   if(Array.isArray(f.colors)) st.colors = new Set(f.colors.filter(c=>COLORS.some(([n])=>n===c)));
   if(Array.isArray(f.arts)) st.arts = new Set(f.arts.filter(a=>a in ART_LABEL));
   // 選択肢に無くなった値(収録弾・特徴など)は解除
-  for(const [sel,k] of [["#fSet","set"],["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]])
+  for(const [sel,k] of [["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]])
     if(st[k] && ![...$(sel).options].some(o=>o.value===st[k])) st[k] = k==="sort" ? "set" : "";
 }
 function filtered(){
   const q = norm(st.q);
   const qs = q ? q.split(/\s+/).filter(Boolean) : [];
   return CARDS.filter(c=>{
-    if(st.set && c.set!==st.set) return false;
+    if(st.sets.size && !st.sets.has(c.set)) return false;
+    if(st.blocks.size && !st.blocks.has(c.block)) return false;
     if(st.colors.size && !c._colors.some(x=>st.colors.has(x))) return false;
     if(st.arts.size && !st.arts.has(c._art)) return false;
     const n = owned[c.id]||0;
@@ -324,9 +322,11 @@ function renderMore(){
 function renderChips(){
   const ch = [];
   if(st.q) ch.push(["q",`検索: ${st.q}`]);
-  if(st.set) ch.push(["set",SETS[st.set].short]);
+  // 4つ以上選んだ項目はタグを1つにまとめる(×で全部解除)
+  if(st.sets.size>3) ch.push(["sets:*", `収録弾 ${st.sets.size}件`]); else st.sets.forEach(v=>ch.push(["sets:"+v, SETS[v].short]));
   st.colors.forEach(c=>ch.push(["color:"+c,c]));
-  st.arts.forEach(a=>ch.push(["art:"+a, ART_LABEL[a]]));
+  if(st.arts.size>3) ch.push(["arts:*", `イラスト ${st.arts.size}種類`]); else st.arts.forEach(a=>ch.push(["arts:"+a, ART_LABEL[a]]));
+  if(st.blocks.size>3) ch.push(["blocks:*", `ブロック ${st.blocks.size}種類`]); else st.blocks.forEach(b=>ch.push(["blocks:"+b, "ブロック"+b]));
   if(st.own) ch.push(["own",st.own==="own"?"所持":"未所持"]);
   if(st.type) ch.push(["type",st.type]);
   if(st.rarity) ch.push(["rarity",st.rarity]);
@@ -335,18 +335,16 @@ function renderChips(){
     (ch.length>1?`<span class="chip" data-k="all" style="color:var(--accent)">すべて解除</span>`:"");
 }
 function clearFilter(k){
-  if(k==="all"){ st.arts.clear(); Object.assign(st,{q:"",set:"",own:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
+  if(k==="all"){ st.arts.clear(); st.sets.clear(); st.blocks.clear(); Object.assign(st,{q:"",own:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
   else if(k.startsWith("color:")) st.colors.delete(k.slice(6));
-  else if(k.startsWith("art:")) st.arts.delete(k.slice(4));
+  else if(/^(arts|sets|blocks):/.test(k)){ const [m,...v]=k.split(":"); const val=v.join(":"); if(val==="*") st[m].clear(); else st[m].delete(val); }
   else st[k]="";
   syncUI(); apply();
 }
 function syncUI(){
-  $("#q").value=st.q; $("#fSet").value=st.set; $("#fType").value=st.type; $("#fRarity").value=st.rarity; $("#fFeature").value=st.feature;
+  $("#q").value=st.q; $("#fType").value=st.type; $("#fRarity").value=st.rarity; $("#fFeature").value=st.feature;
   document.querySelectorAll("#fColor .cdot").forEach(b=>b.classList.toggle("on",st.colors.has(b.dataset.v)));
-  document.querySelectorAll("#fArtPanel input").forEach(b=>b.checked=st.arts.has(b.value));
-  const ab=$("#fArtBtn"); ab.classList.toggle("on", st.arts.size>0);
-  ab.textContent = "イラスト：" + (!st.arts.size ? "すべて" : st.arts.size===1 ? ART_LABEL[[...st.arts][0]] : st.arts.size+"種類") + " ▾";
+  Object.values(MULTI).forEach(syncMulti);
   document.querySelectorAll("#fOwn button").forEach(b=>b.classList.toggle("on",b.dataset.v===st.own));
 }
 function setCount(id, n){
@@ -405,6 +403,7 @@ function openDetail(id){
       ${vars.length>1?`<div style="font-size:12px;color:var(--sub)">イラスト違い</div><div class="variants">${vars.map(v=>`<button data-v="${v.id}" class="${v.id===id?"cur":""}"><img src="${img(v)}" loading="lazy"><span${owned[v.id]?"":" hidden"}>${owned[v.id]||0}</span></button>`).join("")}</div>`:""}
       <dl class="kv">
         <dt>色</dt><dd>${c.color}</dd>
+        ${c.block?`<dt>ブロック</dt><dd>${c.block}</dd>`:""}
         ${c.cost && c.cost!=="-"?`<dt>${c.type==="LEADER"?"ライフ":"コスト"}</dt><dd>${c.cost}</dd>`:""}
         ${c.power && c.power!=="-"?`<dt>パワー</dt><dd>${c.power}</dd>`:""}
         ${c.counter && c.counter!=="-"?`<dt>カウンター</dt><dd>${c.counter}</dd>`:""}
@@ -435,21 +434,68 @@ $("#grid").addEventListener("click", e=>{
 $("#more").onclick = renderMore;
 new IntersectionObserver(es=>{ if(es[0].isIntersecting && shown<list.length) renderMore(); },{rootMargin:"800px"}).observe($("#more"));
 let qt; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ st.q=e.target.value.trim(); apply(); },200); });
-[["#fSet","set"],["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]].forEach(([s,k])=>$(s).addEventListener("change",e=>{ st[k]=e.target.value; apply(); }));
+[["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]].forEach(([s,k])=>$(s).addEventListener("change",e=>{ st[k]=e.target.value; apply(); }));
 [["#fOwn","own"]].forEach(([s,k])=>$(s).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; st[k]=b.dataset.v; syncUI(); apply(); }));
 const ART_LABEL = {"n":"ノーマル","r":"再録","pp":"パックのパラレル","po:デッキ":"デッキのパラレル","po:プロモ":"プロモのパラレル","po:限定":"限定商品のパラレル","po:ファミリー":"ファミリーのパラレル"};
-function openArt(){
-  const p=$("#fArtPanel"), r=$("#fArtBtn").getBoundingClientRect();
-  p.hidden=false;
-  p.style.top=(r.bottom+6)+"px";
-  p.style.left=Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8))+"px";
+/* ---------- 複数選択プルダウン(イラスト・収録弾・ブロック共通) ---------- */
+const BLOCKS = ["1","2","3","4","5","X"];
+const MULTI = {};
+const SET_GROUPS = [["5501","ブースターパック"],["5502","エクストラブースター"],["5503","プレミアムブースター"],["5500","スタートデッキ"],["","その他"]];
+const setLabel = v => {
+  const x = SETS[v];
+  const nm = x.name.replace(/【.*?】/,"").replace(/^(ブースターパック|エクストラブースター|プレミアムブースター|スタートデッキEX|スタートデッキ|アルティメットデッキ)\s*/,"").trim();
+  return x.short===x.name ? x.name : `${x.short}　${nm}`;
+};
+function buildMultiPanels(){
+  const art = [{items:[["n","ノーマル"],["r","再録（パラレル以外）"],["pp","パックのパラレル"]]},
+               {title:"その他のパラレル", indent:true, items:[["po:デッキ","スタートデッキ"],["po:プロモ","プロモ"],["po:限定","限定商品"],["po:ファミリー","ファミリーデッキ"]]}];
+  const used = new Set();
+  const sets = SET_GROUPS.map(([pre,title])=>({title, group:true,
+    items: DATA.sets.filter(x=>!used.has(x.id) && (pre ? x.id.startsWith(pre) : true)).map(x=>{ used.add(x.id); return [x.id, setLabel(x.id)]; })}));
+  const bc = {}; CARDS.forEach(c=>bc[c.block]=(bc[c.block]||0)+1);
+  const blocks = [{items: BLOCKS.filter(b=>bc[b]).map(b=>[b, `ブロック ${b}（${bc[b]}枚）`])}];
+  makeMulti("arts", "イラスト", art, v=>ART_LABEL[v]);
+  makeMulti("sets", "収録弾", sets, v=>SETS[v].short);
+  makeMulti("blocks", "ブロック", blocks, v=>v);
 }
-$("#fArtBtn").addEventListener("click", e=>{ e.stopPropagation(); $("#fArtPanel").hidden ? openArt() : ($("#fArtPanel").hidden=true); });
-$("#fArtPanel").addEventListener("change", e=>{ const v=e.target.value; e.target.checked?st.arts.add(v):st.arts.delete(v); syncUI(); apply(); });
-$("#fArtClear").onclick = ()=>{ st.arts.clear(); syncUI(); apply(); };
-$("#fArtDone").onclick = ()=>{ $("#fArtPanel").hidden=true; };
-document.addEventListener("click", e=>{ if(!$("#fArtPanel").hidden && !e.target.closest("#fArtPanel,#fArtBtn")) $("#fArtPanel").hidden=true; });
-document.querySelector(".filters").addEventListener("scroll", ()=>{ $("#fArtPanel").hidden=true; });
+function makeMulti(key, title, groups, labelOf){
+  const cap = key[0].toUpperCase() + key.slice(1);
+  const btn = $(`#f${cap}Btn`), panel = $(`#f${cap}Panel`);
+  const esc = t => String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+  panel.innerHTML = `<div class="ddbody">${groups.map(g=>
+      (g.title ? (g.group ? `<label class="grp"><input type="checkbox" data-group="${esc(JSON.stringify(g.items.map(i=>i[0])))}"> ${g.title}</label>` : `<div class="ddsub">${g.title}</div>`) : "") +
+      g.items.map(([v,l])=>`<label class="${g.indent||g.group?"indent":""}"><input type="checkbox" value="${esc(v)}"> ${l}</label>`).join("")
+    ).join("")}</div><div class="ddfoot"><button type="button" data-clear>クリア</button><button type="button" data-done>閉じる</button></div>`;
+  const m = MULTI[key] = {key, title, btn, panel, labelOf};
+  btn.addEventListener("click", e=>{ e.stopPropagation(); const wasHidden = panel.hidden; closePanels(); if(wasHidden) openPanel(m); });
+  panel.addEventListener("change", e=>{
+    const t = e.target; if(!t.matches("input[type=checkbox]")) return;
+    const vals = t.dataset.group ? JSON.parse(t.dataset.group) : [t.value];
+    vals.forEach(v=> t.checked ? st[key].add(v) : st[key].delete(v));
+    syncUI(); apply();
+  });
+  panel.querySelector("[data-clear]").onclick = ()=>{ st[key].clear(); syncUI(); apply(); };
+  panel.querySelector("[data-done]").onclick = ()=>{ panel.hidden = true; };
+}
+function syncMulti(m){
+  const set = st[m.key];
+  m.panel.querySelectorAll("input[value]").forEach(i=>i.checked = set.has(i.value));
+  m.panel.querySelectorAll("input[data-group]").forEach(i=>{
+    const vals = JSON.parse(i.dataset.group), n = vals.filter(v=>set.has(v)).length;
+    i.checked = n===vals.length; i.indeterminate = n>0 && n<vals.length;
+  });
+  m.btn.classList.toggle("on", set.size>0);
+  m.btn.textContent = m.title + "：" + (!set.size ? "すべて" : set.size===1 ? m.labelOf([...set][0]) : set.size+"件") + " ▾";
+}
+function openPanel(m){
+  const p = m.panel, r = m.btn.getBoundingClientRect();
+  p.hidden = false;
+  p.style.top = (r.bottom+6)+"px";
+  p.style.left = Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8))+"px";
+}
+function closePanels(){ Object.values(MULTI).forEach(m=>m.panel.hidden = true); }
+document.addEventListener("click", e=>{ if(!e.target.closest(".ddpanel,button.f.dd")) closePanels(); });
+document.querySelector(".filters").addEventListener("scroll", closePanels);
 $("#chips").addEventListener("click", e=>{ const c=e.target.closest(".chip"); if(c) clearFilter(c.dataset.k); });
 $("#detail").addEventListener("click", e=>{
   const id = $("#detail").dataset.id;
@@ -457,7 +503,7 @@ $("#detail").addEventListener("click", e=>{
   const d = e.target.closest("[data-d]"); if(d) return setCount(id,(owned[id]||0)+ +d.dataset.d);
   const v = e.target.closest("[data-v]"); if(v) return openDetail(v.dataset.v);
   const f = e.target.closest("[data-feat]"); if(f){ $("#detail").classList.remove("open"); st.feature=f.dataset.feat; syncUI(); apply(); window.scrollTo(0,0); return; }
-  const s = e.target.closest("[data-set]"); if(s){ $("#detail").classList.remove("open"); st.set=s.dataset.set; syncUI(); apply(); window.scrollTo(0,0); }
+  const s = e.target.closest("[data-set]"); if(s){ $("#detail").classList.remove("open"); st.sets=new Set([s.dataset.set]); syncUI(); apply(); window.scrollTo(0,0); }
 });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open")); });
 $("#menuBtn").onclick = ()=>$("#menu").classList.add("open");

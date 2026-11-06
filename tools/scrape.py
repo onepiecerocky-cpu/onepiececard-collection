@@ -43,7 +43,7 @@ for v, label in series:
         cards.append({
             "id": cid, "code": code, "name": name, "rarity": rarity, "type": "CHARACTER" if ctype.startswith("キャラ") else ctype,
             "cost": field(body, "cost"), "power": field(body, "power"),
-            "counter": field(body, "counter"), "color": field(body, "color"),
+            "counter": field(body, "counter"), "color": field(body, "color"), "block": field(body, "block"),
             "attr": attr.group(1) if attr else "", "feature": field(body, "feature"),
             "text": field(body, "text"), "trigger": field(body, "trigger"),
             "img": img, "set": v, "parallel": int(pm.group(1)) if pm else 0,
