@@ -287,8 +287,11 @@ function sortList(a){
   const tord = c => TYPE_ORDER[c.type] ?? 9;
   const CI = Object.fromEntries(COLORS.map(([n],i)=>[n,i]));
   const cord = c => c._colors.length===1 ? (CI[c._colors[0]] ?? 99) : 100 + (CI[c._colors[0]] ?? 9)*10 + (CI[c._colors[1]] ?? 9);
-  if(st.sort==="code") a.sort((x,y)=>x.code.localeCompare(y.code)||x.parallel-y.parallel);
-  else if(st.sort==="cost") a.sort((x,y)=>cord(x)-cord(y)||tord(x)-tord(y)||cost(x)-cost(y)||x._i-y._i);
+  // 同じカード番号の中は ノーマル → 再録 → パラレル(番号順) に並べる
+  const vrank = c => c.parallel ? 100 + c.parallel : (+(c.id.match(/_r(\d+)$/)||[])[1] ? 50 + +c.id.match(/_r(\d+)$/)[1] : 0);
+  const byCode = (x,y) => x.code.localeCompare(y.code) || vrank(x)-vrank(y) || x._i-y._i;
+  if(st.sort==="code") a.sort(byCode);
+  else if(st.sort==="cost") a.sort((x,y)=>cord(x)-cord(y)||tord(x)-tord(y)||cost(x)-cost(y)||byCode(x,y));
   else if(st.sort==="owned") a.sort((x,y)=>(owned[y.id]||0)-(owned[x.id]||0)||x._i-y._i);
   return a;
 }
