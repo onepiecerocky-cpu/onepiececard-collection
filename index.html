@@ -145,7 +145,7 @@ input.sync:focus{border-color:var(--accent2)}
     <select class="f" id="fRarity"><option value="">レア：すべて</option></select>
     <select class="f" id="fFeature"><option value="">特徴：すべて</option></select>
     <select class="f" id="fSort">
-      <option value="set">並び：収録順</option><option value="code">並び：カード番号</option><option value="cost">並び：コスト</option><option value="owned">並び：所持枚数</option>
+      <option value="set">並び：収録順</option><option value="code">並び：カード番号</option><option value="cost">並び：色別コスト</option><option value="owned">並び：所持枚数</option>
     </select>
   </div>
   <div class="chips" id="chips"></div>
@@ -284,11 +284,13 @@ function filtered(){
 }
 function sortList(a){
   const cost = c => c.cost===""||c.cost==="-" ? -1 : +c.cost;
-  // コスト順は 種類(キャラ→イベント→ステージ→リーダー) → コスト の順に並べる
+  // コスト順は 色(赤→緑→青→紫→黒→黄、多色は単色の後) → 種類(キャラ→イベント→ステージ→リーダー) → コスト の順
   const TYPE_ORDER = {CHARACTER:0, EVENT:1, STAGE:2, LEADER:3};
   const tord = c => TYPE_ORDER[c.type] ?? 9;
+  const CI = Object.fromEntries(COLORS.map(([n],i)=>[n,i]));
+  const cord = c => c._colors.length===1 ? (CI[c._colors[0]] ?? 99) : 100 + (CI[c._colors[0]] ?? 9)*10 + (CI[c._colors[1]] ?? 9);
   if(st.sort==="code") a.sort((x,y)=>x.code.localeCompare(y.code)||x.parallel-y.parallel);
-  else if(st.sort==="cost") a.sort((x,y)=>tord(x)-tord(y)||cost(x)-cost(y)||x._i-y._i);
+  else if(st.sort==="cost") a.sort((x,y)=>cord(x)-cord(y)||tord(x)-tord(y)||cost(x)-cost(y)||x._i-y._i);
   else if(st.sort==="owned") a.sort((x,y)=>(owned[y.id]||0)-(owned[x.id]||0)||x._i-y._i);
   return a;
 }
