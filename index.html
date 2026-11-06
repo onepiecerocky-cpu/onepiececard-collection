@@ -11,6 +11,8 @@
   --c-red:#e8423a;--c-green:#23a35a;--c-blue:#2f7fd8;--c-purple:#8a4fd1;--c-black:#4a4f5a;--c-yellow:#e9c22c;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{touch-action:manipulation}
+.card,.ctrl,.bigctrl,.badge{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:14px}
 button,input,select{font:inherit;color:inherit}
 header{position:sticky;top:0;z-index:20;background:rgba(11,14,22,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 16px 8px}
@@ -87,7 +89,7 @@ main{padding:8px 16px 80px}
 .kv dt{color:var(--sub)}.kv dd{margin:0}
 .txt{white-space:pre-wrap;font-size:13px;line-height:1.6;background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--line)}
 .bigctrl{display:flex;align-items:center;gap:10px;margin:14px 0}
-.bigctrl button{width:56px;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);font-size:26px;font-weight:800;cursor:pointer}
+.bigctrl button{touch-action:manipulation;width:56px;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);font-size:26px;font-weight:800;cursor:pointer}
 .bigctrl .plus{color:var(--ok)}
 .bigctrl .n{font-size:28px;font-weight:800;min-width:48px;text-align:center}
 .variants{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
@@ -232,9 +234,25 @@ async function init(){
     b.onclick=()=>{ st.colors.has(n)?st.colors.delete(n):st.colors.add(n); b.classList.toggle("on"); apply(); }; fcol.appendChild(b); });
   $("#dataInfo").textContent = `カードデータ: ${CARDS.length}枚（うちパラレル${CARDS.filter(c=>c.parallel).length}枚）／更新日 ${DATA.updated}`;
   $("#loading").remove();
+  restoreFilters(); syncUI(); $("#fSort").value = st.sort;
   updateStats(); apply();
 }
 
+// 絞り込み条件・並び順をこの端末に保存し、再読み込み後も復元する
+const FKEY = "optcg_collection_filters_v1";
+function saveFilters(){
+  try{ localStorage.setItem(FKEY, JSON.stringify({...st, colors:[...st.colors], arts:[...st.arts]})); }catch(e){}
+}
+function restoreFilters(){
+  let f; try{ f = JSON.parse(localStorage.getItem(FKEY)); }catch(e){}
+  if(!f || typeof f!=="object") return;
+  for(const k of ["q","set","own","type","rarity","feature","sort"]) if(typeof f[k]==="string") st[k]=f[k];
+  if(Array.isArray(f.colors)) st.colors = new Set(f.colors.filter(c=>COLORS.some(([n])=>n===c)));
+  if(Array.isArray(f.arts)) st.arts = new Set(f.arts.filter(a=>a in ART_LABEL));
+  // 選択肢に無くなった値(収録弾・特徴など)は解除
+  for(const [sel,k] of [["#fSet","set"],["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]])
+    if(st[k] && ![...$(sel).options].some(o=>o.value===st[k])) st[k] = k==="sort" ? "set" : "";
+}
 function filtered(){
   const q = norm(st.q);
   const qs = q ? q.split(/\s+/).filter(Boolean) : [];
@@ -263,6 +281,7 @@ function sortList(a){
   return a;
 }
 function apply(){
+  saveFilters();
   list = sortList(filtered());
   shown = 0; $("#grid").innerHTML = "";
   renderMore();
@@ -329,7 +348,15 @@ function refreshCard(id){
     el.querySelector(".n").textContent = n;
     const b = el.querySelector(".badge"); b.textContent=n; b.classList.toggle("zero", !n);
   });
-  if($("#detail").classList.contains("open") && $("#detail").dataset.id===id) openDetail(id);
+  // 詳細画面が開いていれば、数字の部分だけ更新する
+  const d = $("#detail");
+  if(d.classList.contains("open") && byId[d.dataset.id] && byId[id] && byId[d.dataset.id].code===byId[id].code){
+    if(d.dataset.id===id) d.querySelector(".bigctrl .n").textContent = n;
+    const vb = d.querySelector(`.variants [data-v="${CSS.escape(id)}"] span`);
+    if(vb){ vb.textContent = n; vb.hidden = !n; }
+    const ct = d.querySelector("#codeTotal");
+    if(ct) ct.textContent = (variantsOf[byId[id].code]||[]).reduce((a,v)=>a+(owned[v.id]||0),0);
+  }
 }
 function updateStats(){
   const v = Object.values(owned);
@@ -347,8 +374,8 @@ function openDetail(id){
       <h2>${c.name}</h2>
       <div style="color:var(--sub);font-size:12px">${c.code}${c.parallel?`（${c._pack?"パックのパラレル":"パラレル・"+c._src}）`:c.id.includes("_r")?"（再録）":""}・${c.rarity}・${c.type}</div>
       <div class="bigctrl"><button data-d="-1">−</button><div class="n">${n}</div><button class="plus" data-d="1">＋</button>
-        <span style="color:var(--sub);font-size:12px">同番号合計 ${codeTotal}枚</span></div>
-      ${vars.length>1?`<div style="font-size:12px;color:var(--sub)">イラスト違い</div><div class="variants">${vars.map(v=>`<button data-v="${v.id}" class="${v.id===id?"cur":""}"><img src="${img(v)}" loading="lazy">${owned[v.id]?`<span>${owned[v.id]}</span>`:""}</button>`).join("")}</div>`:""}
+        <span style="color:var(--sub);font-size:12px">同番号合計 <b id="codeTotal">${codeTotal}</b>枚</span></div>
+      ${vars.length>1?`<div style="font-size:12px;color:var(--sub)">イラスト違い</div><div class="variants">${vars.map(v=>`<button data-v="${v.id}" class="${v.id===id?"cur":""}"><img src="${img(v)}" loading="lazy"><span${owned[v.id]?"":" hidden"}>${owned[v.id]||0}</span></button>`).join("")}</div>`:""}
       <dl class="kv">
         <dt>色</dt><dd>${c.color}</dd>
         ${c.cost && c.cost!=="-"?`<dt>${c.type==="LEADER"?"ライフ":"コスト"}</dt><dd>${c.cost}</dd>`:""}
