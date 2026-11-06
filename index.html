@@ -139,9 +139,7 @@ input.sync:focus{border-color:var(--accent2)}
     <div class="colors" id="fColor"></div>
     <button class="f dd" id="fArtsBtn" type="button">イラスト：すべて ▾</button>
     <button class="f dd" id="fBlocksBtn" type="button">ブロック：すべて ▾</button>
-    <div class="seg" id="fOwn">
-      <button data-v="" class="on">すべて</button><button data-v="own">所持</button><button data-v="none">未所持</button>
-    </div>
+    <button class="f dd" id="fOwnsBtn" type="button">所持枚数：すべて ▾</button>
     <select class="f" id="fType">
       <option value="">種類：すべて</option><option>LEADER</option><option>CHARACTER</option><option>EVENT</option><option>STAGE</option>
     </select>
@@ -168,6 +166,7 @@ input.sync:focus{border-color:var(--accent2)}
 <div class="ddpanel" id="fArtsPanel" hidden></div>
 <div class="ddpanel" id="fSetsPanel" hidden></div>
 <div class="ddpanel" id="fBlocksPanel" hidden></div>
+<div class="ddpanel" id="fOwnsPanel" hidden></div>
 <div class="modal" id="detail"><div class="sheet" id="detailSheet"></div></div>
 <div class="modal menu" id="menu"><div class="sheet">
   <button class="close" data-close>✕</button>
@@ -197,7 +196,7 @@ const PAGE = 120;
 
 let DATA = null, CARDS = [], SETS = {}, byId = {}, variantsOf = {};
 let owned = load();
-const st = {q:"", sets:new Set(), colors:new Set(), arts:new Set(), blocks:new Set(), own:"", type:"", rarity:"", feature:"", sort:"set"};
+const st = {q:"", sets:new Set(), colors:new Set(), arts:new Set(), blocks:new Set(), owns:new Set(), type:"", rarity:"", feature:"", sort:"set"};
 let list = [], shown = 0;
 const $ = s => document.querySelector(s);
 
@@ -247,12 +246,14 @@ async function init(){
 // 絞り込み条件・並び順をこの端末に保存し、再読み込み後も復元する
 const FKEY = "optcg_collection_filters_v1";
 function saveFilters(){
-  try{ localStorage.setItem(FKEY, JSON.stringify({...st, colors:[...st.colors], arts:[...st.arts], sets:[...st.sets], blocks:[...st.blocks]})); }catch(e){}
+  try{ localStorage.setItem(FKEY, JSON.stringify({...st, colors:[...st.colors], arts:[...st.arts], sets:[...st.sets], blocks:[...st.blocks], owns:[...st.owns]})); }catch(e){}
 }
 function restoreFilters(){
   let f; try{ f = JSON.parse(localStorage.getItem(FKEY)); }catch(e){}
   if(!f || typeof f!=="object") return;
-  for(const k of ["q","own","type","rarity","feature","sort"]) if(typeof f[k]==="string") st[k]=f[k];
+  for(const k of ["q","type","rarity","feature","sort"]) if(typeof f[k]==="string") st[k]=f[k];
+  if(f.own==="own") f.owns = ["1","2","3","4","5+"]; else if(f.own==="none") f.owns = ["0"];
+  if(Array.isArray(f.owns)) st.owns = new Set(f.owns.filter(x=>OWNS.includes(x)));
   if(typeof f.set==="string" && f.set) f.sets = [f.set];   // 旧形式(単一選択)からの移行
   if(Array.isArray(f.sets)) st.sets = new Set(f.sets.filter(x=>x in SETS));
   if(Array.isArray(f.blocks)) st.blocks = new Set(f.blocks.filter(x=>BLOCKS.includes(x)));
@@ -271,8 +272,7 @@ function filtered(){
     if(st.colors.size && !c._colors.some(x=>st.colors.has(x))) return false;
     if(st.arts.size && !st.arts.has(c._art)) return false;
     const n = owned[c.id]||0;
-    if(st.own==="own" && !n) return false;
-    if(st.own==="none" && n) return false;
+    if(st.owns.size && !st.owns.has(n>=5 ? "5+" : String(n))) return false;
     if(st.type && c.type!==st.type) return false;
     if(st.rarity && c.rarity!==st.rarity) return false;
     if(st.feature && !c._feats.includes(st.feature)) return false;
@@ -330,7 +330,7 @@ function renderChips(){
   st.colors.forEach(c=>ch.push(["color:"+c,c]));
   if(st.arts.size>3) ch.push(["arts:*", `イラスト ${st.arts.size}種類`]); else st.arts.forEach(a=>ch.push(["arts:"+a, ART_LABEL[a]]));
   if(st.blocks.size>3) ch.push(["blocks:*", `ブロック ${st.blocks.size}種類`]); else st.blocks.forEach(b=>ch.push(["blocks:"+b, "ブロック"+b]));
-  if(st.own) ch.push(["own",st.own==="own"?"所持":"未所持"]);
+  if(st.owns.size>3) ch.push(["owns:*", `所持枚数 ${st.owns.size}種類`]); else st.owns.forEach(v=>ch.push(["owns:"+v, OWN_LABEL[v]]));
   if(st.type) ch.push(["type",st.type]);
   if(st.rarity) ch.push(["rarity",st.rarity]);
   if(st.feature) ch.push(["feature","特徴: "+st.feature]);
@@ -338,9 +338,9 @@ function renderChips(){
     (ch.length>1?`<span class="chip" data-k="all" style="color:var(--accent)">すべて解除</span>`:"");
 }
 function clearFilter(k){
-  if(k==="all"){ st.arts.clear(); st.sets.clear(); st.blocks.clear(); Object.assign(st,{q:"",own:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
+  if(k==="all"){ st.arts.clear(); st.sets.clear(); st.blocks.clear(); st.owns.clear(); Object.assign(st,{q:"",type:"",rarity:"",feature:""}); st.colors.clear(); }
   else if(k.startsWith("color:")) st.colors.delete(k.slice(6));
-  else if(/^(arts|sets|blocks):/.test(k)){ const [m,...v]=k.split(":"); const val=v.join(":"); if(val==="*") st[m].clear(); else st[m].delete(val); }
+  else if(/^(arts|sets|blocks|owns):/.test(k)){ const [m,...v]=k.split(":"); const val=v.join(":"); if(val==="*") st[m].clear(); else st[m].delete(val); }
   else st[k]="";
   syncUI(); apply();
 }
@@ -348,7 +348,6 @@ function syncUI(){
   $("#q").value=st.q; $("#fType").value=st.type; $("#fRarity").value=st.rarity; $("#fFeature").value=st.feature;
   document.querySelectorAll("#fColor .cdot").forEach(b=>b.classList.toggle("on",st.colors.has(b.dataset.v)));
   Object.values(MULTI).forEach(syncMulti);
-  document.querySelectorAll("#fOwn button").forEach(b=>b.classList.toggle("on",b.dataset.v===st.own));
 }
 function setCount(id, n){
   n = Math.max(0, Math.min(99, n));
@@ -438,10 +437,11 @@ $("#more").onclick = renderMore;
 new IntersectionObserver(es=>{ if(es[0].isIntersecting && shown<list.length) renderMore(); },{rootMargin:"800px"}).observe($("#more"));
 let qt; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ st.q=e.target.value.trim(); apply(); },200); });
 [["#fType","type"],["#fRarity","rarity"],["#fFeature","feature"],["#fSort","sort"]].forEach(([s,k])=>$(s).addEventListener("change",e=>{ st[k]=e.target.value; apply(); }));
-[["#fOwn","own"]].forEach(([s,k])=>$(s).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; st[k]=b.dataset.v; syncUI(); apply(); }));
 const ART_LABEL = {"n":"ノーマル","r":"再録","pp":"パックのパラレル","po:デッキ":"デッキのパラレル","po:プロモ":"プロモのパラレル","po:限定":"限定商品のパラレル","po:ファミリー":"ファミリーのパラレル"};
 /* ---------- 複数選択プルダウン(イラスト・収録弾・ブロック共通) ---------- */
 const BLOCKS = ["1","2","3","4","5","X"];
+const OWNS = ["0","1","2","3","4","5+"];
+const OWN_LABEL = {"0":"未所持（0枚）","1":"1枚","2":"2枚","3":"3枚","4":"4枚","5+":"5枚以上"};
 const MULTI = {};
 const SET_GROUPS = [["5501","ブースターパック"],["5502","エクストラブースター"],["5503","プレミアムブースター"],["5500","スタートデッキ"],["","その他"]];
 const setLabel = v => {
@@ -460,6 +460,7 @@ function buildMultiPanels(){
   makeMulti("arts", "イラスト", art, v=>ART_LABEL[v]);
   makeMulti("sets", "収録弾", sets, v=>SETS[v].short);
   makeMulti("blocks", "ブロック", blocks, v=>v);
+  makeMulti("owns", "所持枚数", [{items: OWNS.map(v=>[v, OWN_LABEL[v]])}], v=>v==="0" ? "未所持" : OWN_LABEL[v]);
 }
 function makeMulti(key, title, groups, labelOf){
   const cap = key[0].toUpperCase() + key.slice(1);
@@ -577,7 +578,7 @@ const Sync = (()=>{
       owned = next; save();
       changed.forEach(refreshCard);
       if(changed.size && $("#detail").classList.contains("open")) openDetail($("#detail").dataset.id);
-      if(changed.size && st.own) apply();
+      if(changed.size && st.owns.size) apply();
       status("同期済み " + hhmm(), "on");
     }catch(e){ status("同期エラー（自動で再試行します）","err"); }
     busy = false;
