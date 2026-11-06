@@ -48,6 +48,7 @@ main{padding:8px 16px 80px}
 .badge{position:absolute;top:5px;right:5px;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--ok);color:#002a1c;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.5)}
 .badge.zero{display:none}
 .ptag{position:absolute;top:5px;left:5px;background:linear-gradient(135deg,#ffe48a,#ff9d4a);color:#3a1800;font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px}
+.ptag.otag{background:linear-gradient(135deg,#d9b8ff,#8a5cf0);color:#1c0a3a}
 .ptag.rtag{background:#3a4660;color:#dfe6f3}
 .meta{padding:5px 7px 2px;min-height:34px}
 .meta .nm{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -111,7 +112,7 @@ input.sync:focus{border-color:var(--accent2)}
     <select class="f" id="fSet"><option value="">収録弾：すべて</option></select>
     <div class="colors" id="fColor"></div>
     <div class="seg" id="fArt">
-      <button data-v="" class="on">全イラスト</button><button data-v="n">ノーマル</button><button data-v="p">パラレル</button>
+      <button data-v="" class="on">全イラスト</button><button data-v="n">ノーマル</button><button data-v="p">パラレル全部</button><button data-v="pp">パックのパラレル</button><button data-v="po">その他のパラレル</button>
     </div>
     <div class="seg" id="fOwn">
       <button data-v="" class="on">すべて</button><button data-v="own">所持</button><button data-v="none">未所持</button>
@@ -183,6 +184,9 @@ async function init(){
     c._search = norm(c.name + " " + c.code + " " + c.feature);
     c._colors = c.color.split("/");
     c._feats = c.feature.split("/").filter(Boolean);
+    // パック収録 = ブースター(OP)・エクストラ(EB)・プレミアム(PRB)。それ以外はデッキ/プロモ/限定商品など
+    c._pack = /^550[123]/.test(c.set);
+    c._src = c._pack ? "" : c.set.startsWith("5500") ? "デッキ" : c.set==="550901" ? "プロモ" : c.set==="550801" ? "限定" : c.set==="550701" ? "ファミリー" : "その他";
     byId[c.id] = c;
     (variantsOf[c.code] ||= []).push(c);
     return c;
@@ -215,6 +219,8 @@ function filtered(){
     if(st.colors.size && !c._colors.some(x=>st.colors.has(x))) return false;
     if(st.art==="n" && c.parallel) return false;
     if(st.art==="p" && !c.parallel) return false;
+    if(st.art==="pp" && !(c.parallel && c._pack)) return false;
+    if(st.art==="po" && !(c.parallel && !c._pack)) return false;
     const n = owned[c.id]||0;
     if(st.own==="own" && !n) return false;
     if(st.own==="none" && n) return false;
@@ -248,7 +254,7 @@ function cardHTML(c){
   const n = owned[c.id]||0;
   return `<div class="card${n?" owned":""}" data-id="${c.id}">
     <div class="thumb" data-act="open"><img loading="lazy" src="${img(c)}" alt="" onerror="this.style.visibility='hidden'">
-      ${c.parallel?`<div class="ptag">パラレル${c.parallel>1?c.parallel:""}</div>`:c.id.includes("_r")?`<div class="ptag rtag">再録</div>`:""}
+      ${c.parallel?`<div class="ptag${c._pack?"":" otag"}">パラレル${c._pack?"":"｜"+c._src}</div>`:c.id.includes("_r")?`<div class="ptag rtag">再録</div>`:""}
       <div class="badge${n?"":" zero"}">${n}</div></div>
     <div class="meta"><div class="nm">${c.name}</div><div class="cd">${c.code}・${c.rarity}・${c.color}</div></div>
     <div class="ctrl"><button class="minus" data-act="-">−</button><div class="n">${n}</div><button class="plus" data-act="+">＋</button></div>
@@ -265,7 +271,7 @@ function renderChips(){
   if(st.q) ch.push(["q",`検索: ${st.q}`]);
   if(st.set) ch.push(["set",SETS[st.set].short]);
   st.colors.forEach(c=>ch.push(["color:"+c,c]));
-  if(st.art) ch.push(["art",st.art==="p"?"パラレル":"ノーマル"]);
+  if(st.art) ch.push(["art",{n:"ノーマル",p:"パラレル全部",pp:"パックのパラレル",po:"その他のパラレル"}[st.art]]);
   if(st.own) ch.push(["own",st.own==="own"?"所持":"未所持"]);
   if(st.type) ch.push(["type",st.type]);
   if(st.rarity) ch.push(["rarity",st.rarity]);
@@ -315,7 +321,7 @@ function openDetail(id){
     <div class="big"><img src="${img(c)}" alt="${c.name}"></div>
     <div class="info">
       <h2>${c.name}</h2>
-      <div style="color:var(--sub);font-size:12px">${c.code}${c.parallel?`（パラレル${c.parallel>1?c.parallel:""}）`:c.id.includes("_r")?"（再録）":""}・${c.rarity}・${c.type}</div>
+      <div style="color:var(--sub);font-size:12px">${c.code}${c.parallel?`（${c._pack?"パックのパラレル":"パラレル・"+c._src}）`:c.id.includes("_r")?"（再録）":""}・${c.rarity}・${c.type}</div>
       <div class="bigctrl"><button data-d="-1">−</button><div class="n">${n}</div><button class="plus" data-d="1">＋</button>
         <span style="color:var(--sub);font-size:12px">同番号合計 ${codeTotal}枚</span></div>
       ${vars.length>1?`<div style="font-size:12px;color:var(--sub)">イラスト違い</div><div class="variants">${vars.map(v=>`<button data-v="${v.id}" class="${v.id===id?"cur":""}"><img src="${img(v)}" loading="lazy">${owned[v.id]?`<span>${owned[v.id]}</span>`:""}</button>`).join("")}</div>`:""}
